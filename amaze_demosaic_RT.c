@@ -92,24 +92,25 @@ static inline int FC(int row, int col)
 #define min MIN
 
 /* from RT sleef.c */
-static inline float xmul2f(float d) {
+//xmul2f,xdiv2f y xdivf tienen que ser estaticos
+static __inline float xmul2f(float d) { 
 	if (*(int*)&d & 0x7FFFFFFF) { // if f==0 do nothing
 		*(int*)&d += 1 << 23; // add 1 to the exponent
-		}
+	}
 	return d;
 }
 
-static inline float xdiv2f(float d) {
+static __inline float xdiv2f(float d) { 
 	if (*(int*)&d & 0x7FFFFFFF) { // if f==0 do nothing
 		*(int*)&d -= 1 << 23; // sub 1 from the exponent
-		}
+	}
 	return d;
 }
 
-static inline float xdivf( float d, int n){
+static __inline float xdivf( float d, int n) { 
 	if (*(int*)&d & 0x7FFFFFFF) { // if f==0 do nothing
 		*(int*)&d -= n << 23; // add n to the exponent
-		}
+	}
 	return d;
 }	
 
@@ -118,26 +119,24 @@ static inline float xdivf( float d, int n){
 #define ULIM(a, b, c) (((b) < (c)) ? LIM(a,b,c) : LIM(a,c,b))
 
 
-void 
-__attribute__ ((force_align_arg_pointer)) // Needed for win32/mingw (might need include gaurd with another compiler)
-demosaic(
-    float** rawData,    /* holds preprocessed pixel values, rawData[i][j] corresponds to the ith row and jth column */
-    float** red,        /* the interpolated red plane */
-    float** green,      /* the interpolated green plane */
-    float** blue,       /* the interpolated blue plane */
-    int winx, int winy, /* crop window for demosaicing */
-    int winw, int winh,
-    int cfa
-)
-{
+void __attribute__ ((force_align_arg_pointer)) demosaic(float** rawData, float** red, float** green, float** blue, int winx, int winy, int winw, int winh, int cfa) { 
+    /* Needed for win32/mingw (might need include gaurd with another compiler)
+     * holds preprocessed pixel values, rawData[i][j] corresponds to the ith row and jth column 
+     * the interpolated red plane 
+     * the interpolated green plane 
+     * the interpolated blue plane 
+     * crop window for demosaicing 
+     */
+    
     filter = cfa;
-//clock_t	t1,t2;
-//t1 = clock();
+	//clock_t	t1,t2;
+	//t1 = clock();
 
-#define HCLIP(x) x //is this still necessary???
+	#define HCLIP(x) x //is this still necessary???
 	//min(clip_pt,x)
 
-	int width=winw, height=winh;
+	int width=winw, 
+		height=winh;
 
 
 	const float clip_pt = 1/initialGain;
@@ -151,13 +150,17 @@ demosaic(
 
 
 	//offset of R pixel within a Bayer quartet
-	int ex, ey;
+	int ex, 
+		ey;
 
 	//shifts of pointer value to access pixels in vertical and diagonal directions
-	static const int v1=TS, v2=2*TS, v3=3*TS, p1=-TS+1, p2=-2*TS+2, p3=-3*TS+3, m1=TS+1, m2=2*TS+2, m3=3*TS+3;
+	static const int v1=TS,    v2=2*TS,    v3=3*TS, 
+					 p1=-TS+1, p2=-2*TS+2, p3=-3*TS+3, 
+					 m1=TS+1,  m2=2*TS+2,  m3=3*TS+3;
 
 	//tolerance to avoid dividing by zero
-	static const float eps=1e-5, epssq=1e-10;			//tolerance to avoid dividing by zero
+	static const float eps=1e-5, 
+					   epssq=1e-10;			//tolerance to avoid dividing by zero
 
 	//adaptive ratios threshold
 	static const float arthresh=0.75;
@@ -165,13 +168,10 @@ demosaic(
 	static const float nyqthresh=0.5;
 
 	//gaussian on 5x5 quincunx, sigma=1.2
-	static const float gaussodd[4] = {0.14659727707323927f, 0.103592713382435f, 0.0732036125103057f, 0.0365543548389495f};
-	//gaussian on 5x5, sigma=1.2
+	static const float gaussodd[4] = {0.14659727707323927f, 0.103592713382435f, 0.0732036125103057f, 0.0365543548389495f}; //gaussian on 5x5, sigma=1.2
 	static const float gaussgrad[6] = {0.07384411893421103f, 0.06207511968171489f, 0.0521818194747806f,
-	0.03687419286733595f, 0.03099732204057846f, 0.018413194161458882f};
-	//gaussian on 5x5 alt quincunx, sigma=1.5
-	static const float gausseven[2] = {0.13719494435797422f, 0.05640252782101291f};
-	//guassian on quincunx grid
+									   0.03687419286733595f, 0.03099732204057846f, 0.018413194161458882f}; //gaussian on 5x5 alt quincunx, sigma=1.5
+	static const float gausseven[2] = {0.13719494435797422f, 0.05640252782101291f}; //guassian on quincunx grid
 	static const float gquinc[4] = {0.169917f, 0.108947f, 0.069855f, 0.0287182f};
 
 	//~ volatile double progress = 0.0;

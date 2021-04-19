@@ -1,35 +1,21 @@
-"""
-MlRaw.py
-(c) Andrew Baldwin 2013-2014
+import Queue,mutex 
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
-so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-"""
-
-# standard python imports
-import sys,struct,os,math,time,threading,Queue,traceback,wave,multiprocessing,mutex,cPickle
+from struct import unpack
+from math import pow
+from threading import Thread,Lock
+from traceback import print_exc
+from sys import exit
+from wave import open
+from multiprocessing import cpu_count
+from cPickle import load,dump,HIGHEST_PROTOCOL
+from os.path import split,exists,splitext,join,isdir,dirname
+from os import listdir,SEEK_END
 
 # MlRawViewer imports
 import DNG
 from PerformanceLog import PLOG
 PLOG_CPU = 0
 
-# numpy. Could be missing
 try:
     import numpy as np
 except Exception,err:
@@ -37,7 +23,7 @@ except Exception,err:
 I Could not import the numpy module.
 On Debian/Ubuntu try "sudo apt-get install python-numpy"
 """
-    sys.exit(1)
+    exit(1)
 
 try:
     """
@@ -63,9 +49,9 @@ except:
     raise
 
 class SerialiseCPUDemosaic(object):
-    class DemosaicWorker(threading.Thread):
+    class DemosaicWorker(Thread):
         def __init__(self,jobq):
-            threading.Thread.__init__(self)
+            Thread.__init__(self)
             self.daemon = True
             self.jobq = jobq
             self.start()
@@ -79,7 +65,7 @@ class SerialiseCPUDemosaic(object):
         self.mutex = mutex.mutex()
         self.serq = Queue.Queue(1) # Using as Mutex
         self.jobq = Queue.Queue()
-        pool = [self.DemosaicWorker(self.jobq) for i in range(multiprocessing.cpu_count())]
+        pool = [self.DemosaicWorker(self.jobq) for i in range(cpu_count())]
         self.demosaicer = None
         self.dw = 0
         self.dh = 0
@@ -187,9 +173,9 @@ def demosaic16(rawdata,width,height,black,byteSwap=0,cfa=0):
     raw = DemosaicThread.demosaic16(rawdata,width,height,black,byteSwap,cfa)
     return np.frombuffer(raw,dtype=np.float32)
 
-class FrameConverter(threading.Thread):
+class FrameConverter(Thread):
     def __init__(self):
-        threading.Thread.__init__(self)
+        Thread.__init__(self)
         self.daemon = True
         self.iq = Queue.Queue()
         self.start()
@@ -204,8 +190,7 @@ class FrameConverter(threading.Thread):
                 nextFrame.convertQ.put(res)
                 PLOG(PLOG_CPU,"Threaded convert for frame complete")
             except:
-                import traceback
-                traceback.print_exc()
+                print_exc()
                 nextFrame.convertQ.put(None)
 
 FrameConverterThread = FrameConverter()
@@ -380,9 +365,9 @@ def isNumber(string):
         return False
 
 def getRawFileSeries(basename):
-    dirname,filename = os.path.split(basename)
+    dirname,filename = split(basename)
     base = filename[:-2]
-    ld = os.listdir(dirname)
+    ld = listdir(dirname)
     samenamefiles = [n for n in ld if n[:-2]==base and n!=filename and isNumber(n[-2:])]
     allfiles = [filename]
     samenamefiles.sort()
@@ -403,7 +388,7 @@ which contain additional derived or user-set data. Examples include:
 
 class ImageSequence(object):
     def __init__(self,userMetadataFilename=None,**kwds):
-        self._metadataLock = threading.Lock()
+        self._metadataLock = Lock()
         self._userMetadata = {}
         self._userMetadataFilename = userMetadataFilename
         self._metadataLock.acquire()
@@ -457,15 +442,14 @@ class ImageSequence(object):
         #print "Trying to read user metadata file",self._userMetadataFilename
         try:
             if self._userMetadataFilename == None: return
-            if os.path.exists(self._userMetadataFilename):
+            if exists(self._userMetadataFilename):
                 userMetadataFile = file(self._userMetadataFilename,'rb')
-                self._userMetadata = cPickle.load(userMetadataFile)
+                self._userMetadata = load(userMetadataFile)
                 userMetadataFile.close()
                 #print "Read user metadata file. Contents:",len(self._userMetadata),self._userMetadata.keys()
         except:
             self._userMetadata = {}
-            import traceback
-            traceback.print_exc()
+            print_exc()
         #print "Read user metadata"
     def _writeUserMetadata(self):
         #print "Trying to write user metadata",len(self._userMetadata)
@@ -473,14 +457,14 @@ class ImageSequence(object):
             if self._userMetadataFilename == None: return
             if len(self._userMetadata)>0:
                 userMetadataFile = file(self._userMetadataFilename,'wb')
-                cPickle.dump(self._userMetadata,userMetadataFile,protocol=cPickle.HIGHEST_PROTOCOL)
+                dump(self._userMetadata,userMetadataFile,protocol=HIGHEST_PROTOCOL)
                 userMetadataFile.close()
         except:
             pass
         #print "User metadata written"
     @staticmethod
     def userMetadataNameFromOriginal(original):
-        return os.path.splitext(original)[0]+".MRX"
+        return splitext(original)[0]+".MRX"
 
 """
 ML RAW - need to handle spanning files
@@ -490,11 +474,11 @@ class MLRAW(ImageSequence):
         #print "Opening MLRAW file",filename
         self.filename = filename
         dirname,allfiles = getRawFileSeries(filename)
-        indexfile = os.path.join(dirname,allfiles[-1])
+        indexfile = join(dirname,allfiles[-1])
         self.indexfile = file(indexfile,'rb')
-        self.indexfile.seek(-192,os.SEEK_END)
+        self.indexfile.seek(-192,SEEK_END)
         footerdata = self.indexfile.read(192)
-        self.footer = struct.unpack("4shhiiiiii",footerdata[:8*4])
+        self.footer = unpack("4shhiiiiii",footerdata[:8*4])
 	if self.footer[0]!="RAWM": raise IOError()
         self.fps = float(self.footer[6])*0.001
         if self.footer>=23974 and self.footer<=23976:
@@ -504,7 +488,7 @@ class MLRAW(ImageSequence):
             self.fpsnum = self.footer[6]
             self.fpsden = 1000
         #print "FPS:",self.fps
-        self.info = struct.unpack("40i",footerdata[8*4:])
+        self.info = unpack("40i",footerdata[8*4:])
         #print self.footer,self.info
         self.black = self.info[7]
         self.white = self.info[8]
@@ -517,13 +501,13 @@ class MLRAW(ImageSequence):
         #print "Black level:", self.black, "White level:", self.white
         self.framefiles = []
         for framefilename in allfiles:
-            fullframefilename = os.path.join(dirname,framefilename)
+            fullframefilename = join(dirname,framefilename)
             framefile = file(fullframefilename,'rb')
-            framefile.seek(0,os.SEEK_END)
+            framefile.seek(0,SEEK_END)
             framefilelen = framefile.tell()
             self.framefiles.append((framefile,framefilelen))
         self.firstFrame = self._loadframe(0,convert=False)
-        self.preloader = threading.Thread(target=self.preloaderMain)
+        self.preloader = Thread(target=self.preloaderMain)
         self.preloaderArgs = Queue.Queue(2)
         self.preloaderResults = Queue.Queue(2)
         self.preloader.daemon = True
@@ -670,7 +654,7 @@ class MLV(ImageSequence):
         self.totalParsed = parsedTo
         self.firstFrame = self._loadframe(0,convert=False)
         for spanfilename in allfiles[1:]:
-            fullspanfile = os.path.join(dirname,spanfilename)
+            fullspanfile = join(dirname,spanfilename)
             #print fullspanfile
             spanfile = file(fullspanfile,'rb')
             self.fhs.append(spanfile)
@@ -701,7 +685,7 @@ class MLV(ImageSequence):
             return 1.0
     def initPreloader(self):
         if (self.preloader == None):
-            self.preloader = threading.Thread(target=self.preloaderMain)
+            self.preloader = Thread(target=self.preloaderMain)
             self.preloaderArgs = Queue.Queue(2)
             self.preloaderResults = Queue.Queue(2)
             self.preloader.daemon = True
@@ -720,7 +704,7 @@ class MLV(ImageSequence):
                 "lens":self.metadata[ix[3]]}
     def parseFile(self,fhi,framepos):
         fh = self.fhs[fhi]
-        fh.seek(0,os.SEEK_END)
+        fh.seek(0,SEEK_END)
         size = fh.tell()
         pos = 0
         count = 0
@@ -729,7 +713,7 @@ class MLV(ImageSequence):
         ts = None
         while pos<size-8:
             fh.seek(pos)
-            blockType,blockSize = struct.unpack("II",fh.read(8))
+            blockType,blockSize = unpack("II",fh.read(8))
             if blockSize <= 0:
                 break # Corrupt!
             """
@@ -773,7 +757,7 @@ class MLV(ImageSequence):
     def parseFileHeader(self,fh,pos,size):
         fh.seek(pos+8)
         headerData = fh.read(size-8)
-        header = struct.unpack("<8cQHHIHHIIII",headerData[:44])
+        header = unpack("<8cQHHIHHIIII",headerData[:44])
         """
         print "GUID:",header[8]
         print "fileNum:",header[9]
@@ -792,7 +776,7 @@ class MLV(ImageSequence):
     def parseRawInfo(self,fh,pos,size):
         fh.seek(pos+8)
         rawData = fh.read(size-8)
-        raw = struct.unpack("<Q2H40i",rawData[:(8+2*2+40*4)])
+        raw = unpack("<Q2H40i",rawData[:(8+2*2+40*4)])
         self.black = raw[10]
         self.white = raw[11]
         self.colorMatrix = colorMatrix(raw)
@@ -809,7 +793,7 @@ class MLV(ImageSequence):
     def parseRtc(self,fh,pos,size):
         fh.seek(pos+8)
         rtcData = fh.read(size-8)
-        rtc = struct.unpack("<Q10H8s",rtcData[:(8+10*2+8)])
+        rtc = unpack("<Q10H8s",rtcData[:(8+10*2+8)])
         self.currentRtc = len(self.metadata)
         self.metadata.append(rtc)
         #print "Rtc:",rtc
@@ -817,7 +801,7 @@ class MLV(ImageSequence):
     def parseIdentity(self,fh,pos,size):
         fh.seek(pos+8)
         idntData = fh.read(size-8)
-        idnt = struct.unpack("<Q32sI32s",idntData[:(8+32+4+32)])
+        idnt = unpack("<Q32sI32s",idntData[:(8+32+4+32)])
         makemodel = idnt[1].split('\0')[0]
         serial = idnt[3].split('\0')[0]
         make = "Canon"
@@ -833,7 +817,7 @@ class MLV(ImageSequence):
     def parseLens(self,fh,pos,size):
         fh.seek(pos+8)
         lensData = fh.read(size-8)
-        lens = struct.unpack("<Q3HBBII32s32s",lensData[:(8+3*2+2+8+32+32)])
+        lens = unpack("<Q3HBBII32s32s",lensData[:(8+3*2+2+8+32+32)])
         name = lens[8].split('\0')[0]
         serial = lens[9].split('\0')[0]
         #print "Lens:",lens[:-2],name,serial
@@ -843,7 +827,7 @@ class MLV(ImageSequence):
     def parseExpo(self,fh,pos,size):
         fh.seek(pos+8)
         expoData = fh.read(size-8)
-        expo = struct.unpack("<Q4IQ",expoData[:(8+4*4+8)])
+        expo = unpack("<Q4IQ",expoData[:(8+4*4+8)])
         #print "Exposure:",expo
         self.currentExpo = len(self.metadata)
         self.metadata.append(expo)
@@ -851,7 +835,7 @@ class MLV(ImageSequence):
     def parseWbal(self,fh,pos,size):
         fh.seek(pos+8)
         wbalData = fh.read(size-8)
-        wbal = struct.unpack("<Q7I",wbalData[:(8+7*4)])
+        wbal = unpack("<Q7I",wbalData[:(8+7*4)])
         #print "WhiteBalance:",wbal
         self.currentWbal = len(self.metadata)
         self.metadata.append(wbal)
@@ -859,15 +843,15 @@ class MLV(ImageSequence):
     def parseWavi(self,fh,pos,size):
         fh.seek(pos+8)
         waviData = fh.read(size-8)
-        wavi = struct.unpack("<QHHIIHH",waviData[:(8+4+8+4)])
+        wavi = unpack("<QHHIIHH",waviData[:(8+4+8+4)])
         name = self.filename[:-3]+"WAV"
         if self.allParsed: # Index already loaded
-            if not os.path.exists(name): # File not found!
+            if not exists(name): # File not found!
                 self.allParsed = False
                 print "Regenerating embedded WAV file"
             else:
                 # Load it to check it contains frames
-                self.wav = wave.open(name,'r')
+                self.wav = open(name,'r')
                 if self.wav.getnframes()==0:
                     self.wav.close()
                     self.wav = None
@@ -877,7 +861,7 @@ class MLV(ImageSequence):
                     self.wav.close()
                     self.wav = None
                     return wavi
-        self.wav = wave.open(name,'w')
+        self.wav = open(name,'w')
         self.wav.setparams((wavi[2],2,wavi[3],0,'NONE',''))
         #print "Wavi:",wavi,self.wav
         return wavi
@@ -889,11 +873,11 @@ class MLV(ImageSequence):
         fh.seek(pos+8)
         xrefData = fh.read(size-8)
         offset = 8+4+4
-        xref = struct.unpack("<QII",xrefData[:offset])
+        xref = unpack("<QII",xrefData[:offset])
         xrefCount = xref[2]
         xrefs = []
         for x in range(xrefCount):
-            xrefEntry = struct.unpack("<HHQ",xrefData[offset:offset+12])
+            xrefEntry = unpack("<HHQ",xrefData[offset:offset+12])
             offset += 12
             #print xrefEntry
         #print "Xref:",xref
@@ -901,13 +885,13 @@ class MLV(ImageSequence):
     def parseVideoFrame(self,fh,pos,size):
         fh.seek(pos+8)
         rawData = fh.read(8+4+2+2+2+2+4+4)
-        videoFrameHeader = struct.unpack("<QI4H2I",rawData)
+        videoFrameHeader = unpack("<QI4H2I",rawData)
         #print "Video frame",videoFrameHeader[1],"at",pos
         return videoFrameHeader
     def parseAudioFrame(self,fh,pos,size):
         fh.seek(pos+8)
         audioData = fh.read(8+4+4)
-        audioFrameHeader = struct.unpack("<QII",audioData)
+        audioFrameHeader = unpack("<QII",audioData)
         #print "Audio frame",audioFrameHeader[1],"at",pos,audioFrameHeader,size-8-12
         #self.audioframepos[audioFrameHeader]
         audiodata = fh.read(size-24)
@@ -968,7 +952,7 @@ class MLV(ImageSequence):
             fh = self.fhs[fhi]
             while (pos < size) and ((preindexStep > 0) or self.preloaderArgs.empty()):
                 fh.seek(pos)
-                blockType,blockSize = struct.unpack("II",fh.read(8))
+                blockType,blockSize = unpack("II",fh.read(8))
                 """
                 try:
                     blockName = MLV.BlockTypeLookup[blockType]
@@ -1013,7 +997,7 @@ class MLV(ImageSequence):
                     frame = self._loadframe(arg)
                 except Exception,err:
                     print "Error reading frame %d, %s"%(arg,str(err))
-                    traceback.print_exc()
+                    print_exc()
                     frame = None
                 self.preloaderResults.put((arg,frame))
         except:
@@ -1052,7 +1036,7 @@ class MLV(ImageSequence):
             notFound = True
             while pos < size:
                 fh.seek(pos)
-                blockType,blockSize = struct.unpack("II",fh.read(8))
+                blockType,blockSize = unpack("II",fh.read(8))
                 """
                 try:
                     blockName = MLV.BlockTypeLookup[blockType]
@@ -1107,7 +1091,7 @@ class MLV(ImageSequence):
             return Frame(self,None,self.width(),self.height(),self.black,self.white)
         fh = self.fhs[fhi]
         fh.seek(framepos)
-        blockType,blockSize = struct.unpack("II",fh.read(8))
+        blockType,blockSize = unpack("II",fh.read(8))
         videoFrameHeader = self.parseVideoFrame(fh,framepos,blockSize)
         rawstarts = framepos + 32 + videoFrameHeader[-2]
         rawsize = blockSize - 32 - videoFrameHeader[-2]
@@ -1125,14 +1109,14 @@ class CDNG(ImageSequence):
     def __init__(self,filename,preindex=False,**kwds):
         #print "Opening CinemaDNG",filename
         self.filename = filename
-        if os.path.isdir(filename):
+        if isdir(filename):
             self.cdngpath = filename
         else:
-            self.cdngpath = os.path.dirname(filename)
-        self.dngs = [dng for dng in os.listdir(self.cdngpath) if dng.lower().endswith(".dng") and dng[0]!='.']
+            self.cdngpath = dirname(filename)
+        self.dngs = [dng for dng in listdir(self.cdngpath) if dng.lower().endswith(".dng") and dng[0]!='.']
         self.dngs.sort()
 
-        firstDngName = os.path.join(self.cdngpath,self.dngs[0])
+        firstDngName = join(self.cdngpath,self.dngs[0])
         self.firstDng = fd = DNG.DNG()
         fd.readFile(firstDngName) # Only parse metadata
 
@@ -1172,7 +1156,7 @@ class CDNG(ImageSequence):
             if n!=0 and d!=0:
                 baselineExposureOffset = float(n)/float(d)
                 baselineExposure += baselineExposureOffset
-        self.brightness = math.pow(2.0,baselineExposure)
+        self.brightness = pow(2.0,baselineExposure)
         #print "brightness",self.brightness
 
         #print "color matrix:",self.colorMatrix
@@ -1242,7 +1226,7 @@ class CDNG(ImageSequence):
 
         self.firstFrame = self._loadframe(0,convert=False)
 
-        self.preloader = threading.Thread(target=self.preloaderMain)
+        self.preloader = Thread(target=self.preloaderMain)
         self.preloaderArgs = Queue.Queue(2)
         self.preloaderResults = Queue.Queue(2)
         self.preloader.daemon = True
@@ -1256,9 +1240,9 @@ class CDNG(ImageSequence):
     def description(self):
         firstName = self.dngs[0]
         lastName = self.dngs[-1]
-        name,ext = os.path.splitext(firstName)
-        lastname,ext = os.path.splitext(lastName)
-        return os.path.join(self.cdngpath,"["+name+"-"+lastname+"]"+ext)
+        name,ext = splitext(firstName)
+        lastname,ext = splitext(lastName)
+        return join(self.cdngpath,"["+name+"-"+lastname+"]"+ext)
 
     def close(self):
         self.preloaderArgs.put(None) # So that preloader thread exits
@@ -1306,7 +1290,7 @@ class CDNG(ImageSequence):
         if index>=0 and index<self.frames():
             filename = self.dngs[index]
             dng = DNG.DNG()
-            dng.readFileIn(os.path.join(self.cdngpath,filename))
+            dng.readFileIn(join(self.cdngpath,filename))
             if dng.FULL_IFD.hasStrips():
                 rawdata = dng.FULL_IFD.stripsCombined()
                 dng.close()
@@ -1326,14 +1310,14 @@ class TIFFSEQ(ImageSequence):
     def __init__(self,filename,preindex=False,**kwds):
         print "Opening TIFF sequence",filename
         self.filename = filename
-        if os.path.isdir(filename):
+        if isdir(filename):
             self.path = filename
         else:
-            self.path = os.path.dirname(filename)
-        self.tiffs = [tiff for tiff in os.listdir(self.path) if (tiff.lower().endswith(".tif") or tiff.lower().endswith(".tiff")) and tiff[0]!='.']
+            self.path = dirname(filename)
+        self.tiffs = [tiff for tiff in listdir(self.path) if (tiff.lower().endswith(".tif") or tiff.lower().endswith(".tiff")) and tiff[0]!='.']
         self.tiffs.sort()
 
-        firstName = os.path.join(self.path,self.tiffs[0])
+        firstName = join(self.path,self.tiffs[0])
         self.firstTiff = fd = DNG.DNG()
         fd.readFile(firstName) # Only parse metadata
 
@@ -1363,7 +1347,7 @@ class TIFFSEQ(ImageSequence):
 
         self.firstFrame = self._loadframe(0,convert=False)
 
-        self.preloader = threading.Thread(target=self.preloaderMain)
+        self.preloader = Thread(target=self.preloaderMain)
         self.preloaderArgs = Queue.Queue(2)
         self.preloaderResults = Queue.Queue(2)
         self.preloader.daemon = True
@@ -1372,9 +1356,9 @@ class TIFFSEQ(ImageSequence):
     def description(self):
         firstName = self.tiffs[0]
         lastName = self.tiffs[-1]
-        name,ext = os.path.splitext(firstName)
-        lastname,ext = os.path.splitext(lastName)
-        return os.path.join(self.path,"["+name+"-"+lastname+"]"+ext)
+        name,ext = splitext(firstName)
+        lastname,ext = splitext(lastName)
+        return join(self.path,"["+name+"-"+lastname+"]"+ext)
 
     def close(self):
         self.preloaderArgs.put(None) # So that preloader thread exits
@@ -1416,12 +1400,11 @@ class TIFFSEQ(ImageSequence):
         if index>=0 and index<self.frames():
             filename = self.tiffs[index]
             tiff = DNG.DNG()
-            tiff.readFileIn(os.path.join(self.path,filename))
+            tiff.readFileIn(join(self.path,filename))
             try:
                 rawdata = tiff.ifds[0].stripsCombined()
             except:
-                import traceback
-                traceback.print_exc()
+                print_exc()
                 print "Error fetching data from",filename
                 rawdata = np.zeros((self.width()*self.height()*3,),dtype=np.uint16).tostring()
             tiff.close()
@@ -1439,7 +1422,7 @@ class RAWSEQ(ImageSequence):
     def __init__(self,filename,preindex=False,**kwds):
         print "Opening RAW sequence",filename
         self.filename = filename
-        self.path = os.path.dirname(filename)
+        self.path = dirname(filename)
 
         rawseq = file(filename,'r')
         params = [line for line in rawseq]
@@ -1455,10 +1438,10 @@ class RAWSEQ(ImageSequence):
         print "Width:",self._width
         print "Height:",self._height
         print "CFA:",cfalayout
-        self.raws = [n for n in os.listdir(self.path) if not n.lower().endswith(".rawseq") and not n.lower().endswith(".wav") and not n.lower().endswith(".mrx")]
+        self.raws = [n for n in listdir(self.path) if not n.lower().endswith(".rawseq") and not n.lower().endswith(".wav") and not n.lower().endswith(".mrx")]
         self.raws.sort()
 
-        firstName = os.path.join(self.path,self.raws[0])
+        firstName = join(self.path,self.raws[0])
 
         self.fps = 25.0 # Hardcoded to 25
         self.fpsnum = 25000
@@ -1484,7 +1467,7 @@ class RAWSEQ(ImageSequence):
 
         self.firstFrame = self._loadframe(0,convert=False)
 
-        self.preloader = threading.Thread(target=self.preloaderMain)
+        self.preloader = Thread(target=self.preloaderMain)
         self.preloaderArgs = Queue.Queue(2)
         self.preloaderResults = Queue.Queue(2)
         self.preloader.daemon = True
@@ -1493,9 +1476,9 @@ class RAWSEQ(ImageSequence):
     def description(self):
         firstName = self.raws[0]
         lastName = self.raws[-1]
-        name,ext = os.path.splitext(firstName)
-        lastname,ext = os.path.splitext(lastName)
-        return os.path.join(self.path,"["+name+"-"+lastname+"]"+ext)
+        name,ext = splitext(firstName)
+        lastname,ext = splitext(lastName)
+        return join(self.path,"["+name+"-"+lastname+"]"+ext)
 
     def close(self):
         self.preloaderArgs.put(None) # So that preloader thread exits
@@ -1542,17 +1525,17 @@ class RAWSEQ(ImageSequence):
         if index>=0 and index<self.frames():
             filename = self.raws[index]
             print filename
-            rawfile = file(os.path.join(self.path,filename))
+            rawfile = file(join(self.path,filename))
             rawdata = rawfile.read(2*self._width*self._height)
             rawfile.close()
             return Frame(self,rawdata,self.width(),self.height(),self.black,self.white,byteSwap=1,bitsPerSample=self.bitsPerSample,convert=convert,cfa=self.cfa)
         return ""
 
 def candidatesInDir(fn):
-    path,name = os.path.split(fn) # Correct for files and CDNG dirs
-    fl = [f for f in os.listdir(path) if f.lower().endswith(".mlv") or f.lower().endswith(".raw")]
-    dirs = [f for f in os.listdir(path) if os.path.isdir(os.path.join(path,f))]
-    cdngs = [f for f in dirs if len([d for d in os.listdir(os.path.join(path,f)) if d.lower().endswith(".dng")])]
+    path,name = split(fn) # Correct for files and CDNG dirs
+    fl = [f for f in listdir(path) if f.lower().endswith(".mlv") or f.lower().endswith(".raw")]
+    dirs = [f for f in listdir(path) if isdir(join(path,f))]
+    cdngs = [f for f in dirs if len([d for d in listdir(join(path,f)) if d.lower().endswith(".dng")])]
     fl.extend(cdngs)
     fl.sort()
     return fl
@@ -1564,13 +1547,13 @@ def loadRAWorMLV(filename,preindex=True):
     elif fl.endswith(".mlv"):
         return MLV(filename,preindex)
     elif fl.endswith(".dng"):
-        return CDNG(os.path.dirname(filename),preindex)
+        return CDNG(dirname(filename),preindex)
     elif fl.endswith(".tif") or fl.endswith(".tiff"):
-        return TIFFSEQ(os.path.dirname(filename),preindex)
+        return TIFFSEQ(dirname(filename),preindex)
     elif fl.endswith(".rawseq"):
         return RAWSEQ(filename,preindex)
-    elif os.path.isdir(filename):
-        filenames = os.listdir(filename)
+    elif isdir(filename):
+        filenames = listdir(filename)
         dngfiles = [dng for dng in filenames if dng.lower().endswith(".dng")]
         tifffiles = [tiff for tiff in filenames if tiff.lower().endswith(".tif") or tiff.lower().endswith(".tiff")]
         if len(dngfiles)>0:
