@@ -1,0 +1,11 @@
+git clone https://bitbucket.org/baldand/mlrawviewer.git
+cd mlrawviewer
+#pip install requirements PyOpenGL==3.0.2 #PYTHON2 PIP2
+
+#edita amaze_demosaic_RT.c __inline>static inline float xdivf,xmul2f,xdiv2f
+python setup.py build
+cp build/lib.linux-x86_64-2.7/bitunpack.so .
+python mlrawviewer.py ../Descargas/5DII_14may14_blfixOFF.MLV
+
+#TODO
+#refresca imagen al hacer click

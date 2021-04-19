@@ -1,0 +1,205 @@
+About
+-----
+
+MlRawViewer is a cross-platform viewer for raw video files produced by the Magic Lantern add-on software
+for Canon DSLR cameras. (See http://www.magiclantern.fm/ for more details).
+
+It supports both the original RAW format, and the newer MLV (RAW v2.0) format in both
+single and multi-file versions. It can also play CinemaDNG file sets.
+
+It can act as a front end to ffmpeg for encoding raw files into another video
+format such as ProRes.
+
+The program is written in python, and makes use of OpenGL for image processing in order to be
+able to display videos at their intended frame rate. This also depends on you having
+good file read speed in your computer.
+
+It has mainly been developed and tested on Linux, but it has also been packaged
+for Mac and Windows.
+
+License
+-------
+
+Most of the is supplied under a BSD-style license. See the source code.
+
+The file amaze_demosaic_RT.c is licensed with GPLv3, hence binary distributions which include
+that file for CPU demosaicing must be licensed with GPLv3.
+
+Installation from binary package
+--------------------------------
+
+Mac OS X:
+Open the DMG containing the app, and drag the app icon to the Applications folder.
+Select a file to open with right click, and "Open With" MlRawViewer.
+You can make the association permanent so all similar files with open automatically.
+
+Windows:
+Open the folder and drag the app to your local disk.
+Set the file association so supported files are opened with MlRawViewer.
+
+Installation from source
+------------------------
+1. You need python 2.7 or later python 2 release, not python 3
+
+2. You need to install pyOpenGL, e.g. on Ubuntu "sudo apt-get install python-opengl"
+
+3. You need to install numpy, e.g. on Ubuntu "sudo apt-get install python-numpy"
+
+4. The playback will be faster if you build the included bitunpack module. Do. "python setup.py build". Then either link or copy the bitunpack binary from the build sub-directory to the same place as the script
+
+Usage (command line)
+--------------------
+
+-/mlrawviewer.py <path_to_ML_RAW_or_MLV_base_file> [<wav_file_to_play_along_with_video>] [<output_file_name_for_encoding>]
+
+If the Raw file is the first in a numbered set, the other files will be used automatically.
+Playback will happen at the file frame rate or the closest achievable if constrained by disk read speed.
+
+Encoding is made using the version of "ffmpeg" found either in the scritp directory or on the path. Currently it tries to encode
+with the "prores_ks" codec, which may only be found in newer versions of (real) ffmpeg. You can download a suitable (e.g. static) version of ffmpeg from http://www.ffmpeg.org/download.html
+
+A new file can be dragged onto an existing window and will be
+loaded (GLFW backend only).
+
+Usage (gui)
+-----------
+
+Browser:
+
+If opened without a file, a browser is shown allowing you to choose one.
+Clicking a folder will open that folder.
+Clicking the up arrow or presing the SHIFT key will go to the parent folder.
+Clicking a video or pressing the ENTER key will open that video in the viewer.
+Clicking the close icon or pressing the BACKSPACE key will close the browser (or go back to the viewer)
+
+Viewer:
+
+The timeline bar can be clicked to jump to anywhere in the current file.
+
+At the top left is the file metadata. Clicking this or pressing BACKSPACE goes to the browser.
+
+State icons along the left are as follows:
+
+- Fullscreen/windows mode
+- Drop-frame mode (clock) or non-frop-frame mode
+- Colour curve (sRGB, 709, linear, hdr or log)
+- Demosaic quality
+- Stripe removing (vertical and horizontal)
+- Export type
+- Playing/paused
+
+They can be clicked to change the current state.
+
+On the bottom right are a brightness (exposure) bar and a white balance box.
+Above that are 6 icons:
+- Reset brightness to EV 0.0
+- White balance dropper. Click it to red, then click a neutral colour anywhere in the image to set the white balance
+- Undo brightness/balance change
+- Redo brightness/balance change (after undoing)
+- Store current brightness/balance to memory
+- Restore brightness/balance from memory (can be in another clip)
+
+As a more powerful alternative to the fixed colour curves, 1D and 3D LUTs can be used.
+Up to 3 LUTs can be used - a 1D LUT, followed by a 3D LUT, followed by second 1D LUT.
+A few standard 1D LUTs are supplied, replicating the standard curves.
+Additional 1D and 3D LUTs can be imported from .CUBE files by pressing Shift-L and selecting the files.
+To select the first 1D LUT, use Shift-LEFT/RIGHT keys.
+To select the 3D LUT, use Shift-UP/DOWN keys.
+To select the second 1D LUT, use Shift-Z/X keys.
+
+Keys
+----
+
+ESCAPE - Close application. If exporting you will be asked first if exporting should be cancelled.
+
+In browser:
+
+SHIFT - Go up to parent folder
+
+ENTER - Open file
+
+CURSORS or PAGE UP/DOWN - Change focus
+
+BACKSPACE - Go back to viewer
+
+J/K - Jump to sibling folders of currently shown folder
+
+In viewer:
+
+BACKSPACE - Open browser
+
+SPACE - Pause/Unpause playback
+
+TAB - Toggle between initial windowed mode and fullscreen
+
+LEFT/RIGHT CURSOR - Jump back/forward 1 second
+
+COMMA(,)/PERIOD(.) - Nudge back/forward by 1 frame (works best when paused)
+
+UP/DOWN CURSOR - Increase/decrease brightness
+
+1, 2, 3 - Change White Balance
+
+7, 4 - Change red multiplier up and down by 0.01
+
+9, 6 - Change blue multiplier up and down by 0.01
+
+F - Toggle between drop-frame mode allowing synchronised audio playback, or sequential frame mode and no audio
+
+Q - Toggle between fast and high-quality demosaicing for playback (high-quality is used automatically when paused)
+
+A - Toggle anamorphic aspect to take into account the 1.4x squeeze from shooting 50p/60p
+
+S - Toggle anamorphic aspect to take into account anamorphic lenses (1.33x, 1.4x, 1.5x, 2.0x)
+
+W - File dialog to choose the export directory
+
+D - Choose export type, MOV or DNG
+
+E - Start exporting from the start of the marked range to the export directory. Will use the source name with ".MOV" or "_DNG" appended.
+
+C - Export all files in the current directory using the current settings.
+
+Y - Pause or continue processing of the export queue.
+
+X - Cancel current export job (and start next one in queue)
+
+Z - Cancel all export jobs
+
+T - Toggle between sRGB gamma, Rec.709 gamma, linear, global tone mapping, and log mapping curves
+
+J/K - Change to previous/next MLV/RAW file in same directory as current file
+
+V/B/N/M - Slide audio file start by -0.5,-0.05,+0.05,+0.5 seconds
+
+I/O - Set IN/OUT marks. IN mark must be before the OUT mark. OUT mark must be after the IN mark
+
+U/P - Jump to the previous/next marks
+
+R - Reset the marks to start/end of the file
+
+L - Toggle looping or play-once mode
+
+H/G - Save/load current colour balance & brightness (for matching multiple takes)
+
+0 - Toggle stripe/hot-pixel removing preprocess pass
+
+Shift-F - FPS override
+
+Shift-L - Choose LUTs from .CUBE files to import. LUTs only need to be imported once.
+
+Shift-LEFT/RIGHT - Select 1D LUT 1 from the available (imported) 1D LUTs
+
+Shift-UP/DOWN - Select 3D LUT from the available (imported) 3D LUTs
+
+Shift-Z/X - Select 1D LUT 2 from the available (imported) 1D LUTs
+
+Shift-H - Show/Hide RGB Histogram
+
+Shift-1 - Remove current 1D1 LUT. Delete from available 1D LUTs if not standard
+
+Shift-3 - Remove current 3D LUT. Delete from available 3D LUTs
+
+Shift-TAB - Hide overlay
+
+Shift-W - Open dialog to choose WAV file for playing with current video
