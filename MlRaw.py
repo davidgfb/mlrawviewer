@@ -10,21 +10,22 @@ from multiprocessing import cpu_count
 from cPickle import load,dump,HIGHEST_PROTOCOL
 from os.path import split,exists,splitext,join,isdir,dirname
 from os import listdir,SEEK_END
-
+from numpy import frombuffer,float32,arange,uint32,uint8,uint16,empty,fromstring,zeros,array,clip,matrix,eye
+from bitunpack import __version__,demosaic,demosaicer,predemosaic12,postdemosaic,predemosaic14,predemosaic16,unpack12to16,unpack14to16,unpackljto16
 # MlRawViewer imports
 import DNG
 from PerformanceLog import PLOG
 PLOG_CPU = 0
-
-try:
-    import numpy as np
-except Exception,err:
-    print """There is a problem with your python environment.
-I Could not import the numpy module.
-On Debian/Ubuntu try "sudo apt-get install python-numpy"
 """
-    exit(1)
+try:
 
+except Exception,err:
+    print There is a problem with your python environment.
+    I Could not import the numpy module.
+	On Debian/Ubuntu try "sudo apt-get install python-numpy"
+	
+    exit(1)
+"""
 try:
     """
     This C extension is faster way to do the 14-to-16bit
@@ -32,7 +33,7 @@ try:
     numpy in case it hasn't been compiled
     """
     import bitunpack
-    if ("__version__" not in dir(bitunpack)) or bitunpack.__version__!="3.0":
+    if ("__version__" not in dir(bitunpack)) or __version__!="3.0":
         print """
 
 !!! Wrong version of bitunpack found !!!
@@ -58,7 +59,7 @@ class SerialiseCPUDemosaic(object):
         def run(self):
             while True:
                 job = self.jobq.get()
-                bitunpack.demosaic(*job)
+                demosaic(*job)
                 self.jobq.task_done()
 
     def __init__(self):
@@ -78,7 +79,7 @@ class SerialiseCPUDemosaic(object):
             else:
                 del self.demosaicer # Wrong size
                 self.demosaicer = None
-        self.demosaicer = bitunpack.demosaicer(width,height)
+        self.demosaicer = demosaicer(width,height)
         self.dw = width
         self.dh = height
         return self.demosaicer
@@ -106,45 +107,45 @@ class SerialiseCPUDemosaic(object):
     def demosaic12(self,rawdata,width,height,black,byteSwap=0,cfa=0):
         self.serq.put(True) # Let us run
         demosaicer = self.getdemosaicer(width,height)
-        bitunpack.predemosaic12(demosaicer,rawdata,width,height,black,byteSwap)
+        predemosaic12(demosaicer,rawdata,width,height,black,byteSwap)
         self.doDemosaic(demosaicer,width,height,cfa)
-        result = bitunpack.postdemosaic(demosaicer)
+        result = postdemosaic(demosaicer)
         self.serq.get() # Let someone else work
-        return np.frombuffer(result,dtype=np.float32)
+        return frombuffer(result,dtype=float32)
 
     def demosaic14(self,rawdata,width,height,black,byteSwap=0,cfa=0):
         self.serq.put(True) # Let us run
         demosaicer = self.getdemosaicer(width,height)
-        bitunpack.predemosaic14(demosaicer,rawdata,width,height,black,byteSwap)
+        predemosaic14(demosaicer,rawdata,width,height,black,byteSwap)
         self.doDemosaic(demosaicer,width,height,cfa)
-        result = bitunpack.postdemosaic(demosaicer)
+        result = postdemosaic(demosaicer)
         self.serq.get() # Let someone else work
-        return np.frombuffer(result,dtype=np.float32)
+        return frombuffer(result,dtype=float32)
 
     def demosaic16(self,rawdata,width,height,black,byteSwap=0,cfa=0):
         self.serq.put(True) # Let us run
         demosaicer = self.getdemosaicer(width,height)
-        bitunpack.predemosaic16(demosaicer,rawdata,width,height,black,byteSwap)
+        predemosaic16(demosaicer,rawdata,width,height,black,byteSwap)
         self.doDemosaic(demosaicer,width,height,cfa)
-        result = bitunpack.postdemosaic(demosaicer)
+        result = postdemosaic(demosaicer)
         self.serq.get() # Let someone else work
-        return np.frombuffer(result,dtype=np.float32)
+        return frombuffer(result,dtype=float32)
 
 DemosaicThread = SerialiseCPUDemosaic()
 
 def testdemosaicer():
-    d = bitunpack.demosaicer(128,128)
+    d = demosaicer(128,128)
     del d
-    d1 = bitunpack.demosaicer(3000,2000)
-    d2 = bitunpack.demosaicer(1024,1024)
+    d1 = demosaicer(3000,2000)
+    d2 = demosaicer(1024,1024)
     del d2
     del d1
-    d3 = bitunpack.demosaicer(1024,768)
-    buf = (np.arange(1024*768,dtype=np.uint32)%256).astype(np.uint8)
+    d3 = demosaicer(1024,768)
+    buf = (arange(1024*768,dtype=uint32)%256).astype(uint8)
     len14 = 1024*768*14/8
     len16 = 1024*768*2
-    bitunpack.predemosaic14(d3,buf[:len14],1024,768,2000,0)
-    bitunpack.predemosaic16(d3,buf[:len16],1024,768,2000,0)
+    predemosaic14(d3,buf[:len14],1024,768,2000,0)
+    predemosaic16(d3,buf[:len16],1024,768,2000,0)
     dembuf = DemosaicThread.demosaic14(buf[:len14],1024,768,2000,0)
     #print buf,dembuf.shape,dembuf.reshape((1024,768,3))[:,300]
 
@@ -153,25 +154,25 @@ def testdemosaicer():
 
 def unpacks12np16(rawdata,width,height,byteSwap=0):
     tounpack = (width*height*3)/2
-    unpacked,stats = bitunpack.unpack12to16(rawdata[:tounpack],byteSwap)
-    return np.frombuffer(unpacked,dtype=np.uint16),stats
+    unpacked,stats = unpack12to16(rawdata[:tounpack],byteSwap)
+    return frombuffer(unpacked,dtype=uint16),stats
 
 def unpacks14np16(rawdata,width,height,byteSwap=0):
     tounpack = width*height*14/8
-    unpacked,stats = bitunpack.unpack14to16(rawdata[:tounpack],byteSwap)
-    return np.frombuffer(unpacked,dtype=np.uint16),stats
+    unpacked,stats = unpack14to16(rawdata[:tounpack],byteSwap)
+    return frombuffer(unpacked,dtype=uint16),stats
 
 def demosaic12(rawdata,width,height,black,byteSwap=0,cfa=0):
     raw = DemosaicThread.demosaic12(rawdata,width,height,black,byteSwap,cfa)
-    return np.frombuffer(raw,dtype=np.float32)
+    return frombuffer(raw,dtype=float32)
 
 def demosaic14(rawdata,width,height,black,byteSwap=0,cfa=0):
     raw = DemosaicThread.demosaic14(rawdata,width,height,black,byteSwap,cfa)
-    return np.frombuffer(raw,dtype=np.float32)
+    return frombuffer(raw,dtype=float32)
 
 def demosaic16(rawdata,width,height,black,byteSwap=0,cfa=0):
     raw = DemosaicThread.demosaic16(rawdata,width,height,black,byteSwap,cfa)
-    return np.frombuffer(raw,dtype=np.float32)
+    return frombuffer(raw,dtype=float32)
 
 class FrameConverter(Thread):
     def __init__(self):
@@ -245,18 +246,18 @@ class Frame:
         if self.rawdata != None:
             if self.ljpeg:
                 # rawdata contains multiple LJPEG tiles
-                self.rawimage = np.empty((self.width*self.height),dtype=np.uint16)
+                self.rawimage = empty((self.width*self.height),dtype=uint16)
                 tw,tl = self.rawdata[:2]
                 for i,t in enumerate(self.rawdata[2]):
-                    bitunpack.unpackljto16(t,self.rawimage,i*tw*2,tw,self.width-tw,self.linearization)
+                    unpackljto16(t,self.rawimage,i*tw*2,tw,self.width-tw,self.linearization)
             elif self.bitsPerSample == 14:
                 self.rawimage,self.framestats = unpacks14np16(self.rawdata,self.width,self.height,self.byteSwap)
             elif self.bitsPerSample == 12:
                 self.rawimage,self.framestats = unpacks12np16(self.rawdata,self.width,self.height,self.byteSwap)
             elif self.bitsPerSample == 16:
-                self.rawimage,self.framestats = np.fromstring(self.rawdata,dtype=np.uint16),(0,0)
+                self.rawimage,self.framestats = fromstring(self.rawdata,dtype=uint16),(0,0)
         else:
-            rawimage = np.empty(self.width*self.height,dtype=np.uint16)
+            rawimage = empty(self.width*self.height,dtype=uint16)
             rawimage.fill(self.black)
             self.rawimage = rawimage.tostring()
         return True
@@ -275,7 +276,7 @@ class Frame:
             elif self.bitsPerSample == 12:
                 self.rgbimage = demosaic12(self.rawdata,self.width,self.height,self.black,byteSwap=0,cfa=self.cfa)
         else:
-            self.rgbimage = np.zeros(self.width*self.height*3,dtype=np.uint16).tostring()
+            self.rgbimage = zeros(self.width*self.height*3,dtype=uint16).tostring()
     def thumb(self,balance=None,brightness=None):
         """
         Try to make a thumbnail from the data we have
@@ -286,14 +287,14 @@ class Frame:
         PLOG(PLOG_CPU,"Frame thumb gen starts")
         if self.rgbimage!=None:
             # Subsample the rgbimage at about 1/8th size
-            nrgb = self.rgbimage.reshape((self.height,self.width,3)).astype(np.float32)
+            nrgb = self.rgbimage.reshape((self.height,self.width,3)).astype(float32)
             # Random brightness and colour balance
-            ssnrgb = (((brightness*6.0)/65536.0)*np.array(balance))*nrgb[::8,::8,:]
+            ssnrgb = (((brightness*6.0)/65536.0)*array(balance))*nrgb[::8,::8,:]
             # Tone map
             ssnrgb = ssnrgb/(1.0 + ssnrgb)
             # Map to 16bit uint range
             PLOG(PLOG_CPU,"Frame thumb gen done")
-            return (ssnrgb*65536.0).astype(np.uint16)
+            return (ssnrgb*65536.0).astype(uint16)
         if self.rawdata and self.bitsPerSample==14:
             # Extract low-quality downscaled RGB image
             # from packed 14bit bayer data
@@ -301,27 +302,27 @@ class Frame:
             # (packed into 14 bytes) on 2 out of 8 rows.
             # That gives R,G1,G2,B values. Make 1 pixel from those
             h = 8*(self.height/8)
-            bayer = np.fromstring(self.rawdata[:self.height*self.width*14/8],dtype=np.uint16).reshape(self.height,(self.width*7)/8)[:h,:].astype(np.uint16) # Clip to height divisible by 8
+            bayer = fromstring(self.rawdata[:self.height*self.width*14/8],dtype=uint16).reshape(self.height,(self.width*7)/8)[:h,:].astype(uint16) # Clip to height divisible by 8
             r1 = bayer[2::8,::7]
             r2 = bayer[2::8,1::7]
             b1 = bayer[1::8,::7]
             b2 = bayer[1::8,1::7]
-            nrgb = np.zeros(shape=(self.height/8,self.width/8,3),dtype=np.uint16)+self.black
+            nrgb = zeros(shape=(self.height/8,self.width/8,3),dtype=uint16)+self.black
             nrgb[:,:,0] = r1>>2
             nrgb[:,:,1] = ((r1&0x3)<<12) | (r2>>4)
             nrgb[:,:,2] = ((b1&0x3)<<12) | (b2>>4)
             # Random brightness and colour balance
-            ssnrgb = (((brightness*6.0)/(2.0**14))*np.array(balance))*(nrgb.astype(np.float32)-self.black)
-            ssnrgb = np.clip(ssnrgb,0.0,1000000.0)
+            ssnrgb = (((brightness*6.0)/(2.0**14))*array(balance))*(nrgb.astype(float32)-self.black)
+            ssnrgb = clip(ssnrgb,0.0,1000000.0)
             # Tone map
             ssnrgb = ssnrgb/(1.0 + ssnrgb)
             # Map to 16bit uint range
             PLOG(PLOG_CPU,"Frame thumb gen done")
-            return (ssnrgb*65536.0).astype(np.uint16)
+            return (ssnrgb*65536.0).astype(uint16)
         else: # Convert to 16 bit and make thumbnail from that
             self.convert()
-            ri = np.array(self.rawimage,dtype=np.uint16).reshape(self.height,self.width)
-            nrgb = np.zeros(shape=(self.height/8,self.width/8,3),dtype=np.uint16)+self.black
+            ri = array(self.rawimage,dtype=uint16).reshape(self.height,self.width)
+            nrgb = zeros(shape=(self.height/8,self.width/8,3),dtype=uint16)+self.black
             if self.cfa==0:
                 nrgb[:,:,0] = ri[::8,0::8][:nrgb.shape[0],:nrgb.shape[1]]
                 nrgb[:,:,1] = ri[::8,1::8][:nrgb.shape[0],:nrgb.shape[1]]
@@ -334,23 +335,23 @@ class Frame:
             #nrgb[:,:,1] = ((r1&0x3)<<12) | (r2>>4)
             #nrgb[:,:,2] = ((b1&0x3)<<12) | (b2>>4)
             # Random brightness and colour balance
-            ssnrgb = (((brightness*6.0)/65536.0)*np.array(balance))*(nrgb.astype(np.float32)-self.black)
-            ssnrgb = np.clip(ssnrgb,0.0,1000000.0)
+            ssnrgb = (((brightness*6.0)/65536.0)*array(balance))*(nrgb.astype(float32)-self.black)
+            ssnrgb = clip(ssnrgb,0.0,1000000.0)
             # Tone map
             ssnrgb = ssnrgb/(1.0 + ssnrgb)
             # Map to 16bit uint range
             PLOG(PLOG_CPU,"Frame thumb gen done")
-            return (ssnrgb*65536.0).astype(np.uint16)
+            return (ssnrgb*65536.0).astype(uint16)
         PLOG(PLOG_CPU,"Frame thumb gen done")
 
 def colorMatrix(raw_info):
-    vals = np.array(raw_info[-19:-1]).astype(np.float32)
+    vals = array(raw_info[-19:-1]).astype(float32)
     nom = vals[::2]
     denom = vals[1::2]
     scaled = (nom/denom).reshape((3,3))
-    XYZToCam = np.matrix(scaled)
+    XYZToCam = matrix(scaled)
     camToXYZ = XYZToCam.getI()
-    XYZtosRGB = np.matrix([[3.2404542,-1.5371385,-0.4985314],
+    XYZtosRGB = matrix([[3.2404542,-1.5371385,-0.4985314],
                            [-0.9692660,1.8760108,0.0415560],
                            [0.0556434,-0.2040259,1.0572252]])
     camToLinearsRGB = XYZtosRGB * camToXYZ
@@ -1142,9 +1143,9 @@ class CDNG(ImageSequence):
             self.black = self.black[0]/self.black[1]
         self.white = fd.FULL_IFD.tags[DNG.Tag.WhiteLevel[0]][3][0]
         matrix = self.tag(fd,DNG.Tag.ColorMatrix1)
-        self.colorMatrix = np.eye(3)
+        self.colorMatrix = eye(3)
         if matrix != None:
-            self.colorMatrix = np.matrix(np.array([float(n)/float(d) for n,d in matrix[3]]).reshape(3,3))
+            self.colorMatrix = matrix(array([float(n)/float(d) for n,d in matrix[3]]).reshape(3,3))
 
         baselineExposure = 0.0 # EV
         if DNG.Tag.BaselineExposure[0] in fd.FULL_IFD.tags:
@@ -1181,7 +1182,7 @@ class CDNG(ImageSequence):
 
         self.linearization = ""
         if DNG.Tag.LinearizationTable[0] in fd.FULL_IFD.tags:
-            self.linearization = np.array(fd.FULL_IFD.tags[DNG.Tag.LinearizationTable[0]][3],dtype=np.uint16)
+            self.linearization = array(fd.FULL_IFD.tags[DNG.Tag.LinearizationTable[0]][3],dtype=uint16)
 
         self.cfa = 0
         if DNG.Tag.CFAPattern[0] in fd.FULL_IFD.tags:
@@ -1328,7 +1329,7 @@ class TIFFSEQ(ImageSequence):
 
         self.black = 0
         self.white = 65535
-        self.colorMatrix = np.matrix(np.eye(3))
+        self.colorMatrix = matrix(eye(3))
         self.whiteBalance = None
         self.brightness = 1.0
         print "Black level:", self.black, "White level:", self.white
@@ -1406,7 +1407,7 @@ class TIFFSEQ(ImageSequence):
             except:
                 print_exc()
                 print "Error fetching data from",filename
-                rawdata = np.zeros((self.width()*self.height()*3,),dtype=np.uint16).tostring()
+                rawdata = zeros((self.width()*self.height()*3,),dtype=uint16).tostring()
             tiff.close()
             return Frame(self,rawdata,self.width(),self.height(),self.black,self.white,byteSwap=1,bitsPerSample=self.bitsPerSample,bayer=False,rgb=True,convert=convert)
         return ""
@@ -1450,7 +1451,7 @@ class RAWSEQ(ImageSequence):
 
         self.black = 0
         self.white = 65535
-        self.colorMatrix = np.matrix(np.eye(3))
+        self.colorMatrix = matrix(eye(3))
         self.whiteBalance = None
         self.brightness = 1.0
         print "Black level:", self.black, "White level:", self.white
